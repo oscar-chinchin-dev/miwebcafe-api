@@ -343,8 +343,7 @@ namespace MiWebCafe.API.Controllers
         /// <summary>
         /// Finaliza el proceso de venta cambiando su estado a CONFIRMADA.
         /// </summary>
-        // [Authorize(Roles = "Admin,Cajero")]
-
+        [Authorize(Roles = "Admin,Cajero")]
         [HttpPost("{id}/confirmar")]
         public async Task<IActionResult> ConfirmarVenta(int id)
         {
