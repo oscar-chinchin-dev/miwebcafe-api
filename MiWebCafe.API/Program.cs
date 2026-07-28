@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using miwebcafe.API.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using MiWebCafe.API.Configuration;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,53 +17,69 @@ builder.Services.AddCors(options =>
     });
 });
 
-// --- Configuración de Servicios (Inyección de Dependencias) ---
+// --- ConfiguraciÃ³n de Servicios (InyecciÃ³n de Dependencias) ---
 
-// Configuración de controladores con política de nombres CamelCase para compatibilidad con Frontend (Angular/React)
+// ConfiguraciÃ³n de controladores con polÃ­tica de nombres CamelCase para compatibilidad con Frontend (Angular/React)
 builder.Services.AddControllers().AddJsonOptions(opt =>
 {
     opt.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
 });
 
-// Configuración de la base de datos principal mediante SQL Server
+// ConfiguraciÃ³n de la base de datos principal mediante SQL Server
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"))
 );
 
-// Soporte para OpenAPI (Documentación de la API)
+builder.Services
+    .AddOptions<JwtOptions>()
+    .BindConfiguration(JwtOptions.SectionName)
+    .Validate(options => options.IsValid(), "La configuraciÃ³n JWT es invÃ¡lida.")
+    .ValidateOnStart();
+
+builder.Services
+    .AddOptions<InitialUsersOptions>()
+    .BindConfiguration(InitialUsersOptions.SectionName)
+    .Validate(options => options.IsValid(), "La configuraciÃ³n de usuarios iniciales es invÃ¡lida.")
+    .ValidateOnStart();
+
+builder.Services.AddScoped<DbInitializer>();
+
+// Soporte para OpenAPI (DocumentaciÃ³n de la API)
 builder.Services.AddOpenApi();
 
-// --- Configuración de Seguridad JWT ---
-var jwtSettings = builder.Configuration.GetSection("Jwt");
-var key = Encoding.UTF8.GetBytes(jwtSettings["Key"]!);
+// --- ConfiguraciÃ³n de Seguridad JWT ---
+var jwtSettings = builder.Configuration
+    .GetRequiredSection(JwtOptions.SectionName)
+    .Get<JwtOptions>()!;
+var key = Encoding.UTF8.GetBytes(jwtSettings.Key);
 
 builder.Services.AddAuthentication(options =>
 {
-    // Establece JWT como el esquema de autenticación por defecto
+    // Establece JWT como el esquema de autenticaciÃ³n por defecto
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
 })
 .AddJwtBearer(options =>
 {
-    // Definición de reglas para validar el token recibido
+    // DefiniciÃ³n de reglas para validar el token recibido
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
         ValidateAudience = true,
         ValidateLifetime = true, // Verifica que el token no haya expirado
         ValidateIssuerSigningKey = true, // Valida la firma del servidor
-        ValidIssuer = jwtSettings["Issuer"],
-        ValidAudience = jwtSettings["Audience"],
+        ValidIssuer = jwtSettings.Issuer,
+        ValidAudience = jwtSettings.Audience,
         IssuerSigningKey = new SymmetricSecurityKey(key)
     };
 });
 
-// Configuración de CORS: Permite que el frontend (puerto 4200) se comunique con esta API
+// ConfiguraciÃ³n de CORS: Permite que el frontend (puerto 4200) se comunique con esta API
 
 
 var app = builder.Build();
 
-// --- Configuración del Pipeline de solicitudes (Middleware) ---
+// --- ConfiguraciÃ³n del Pipeline de solicitudes (Middleware) ---
 
 
 
@@ -74,21 +91,20 @@ if (app.Environment.IsDevelopment())
 
 // app.UseHttpsRedirection(); // Comentado para desarrollo local si no se usa SSL
 
-// El orden aquí es CRÍTICO: CORS -> Autenticación -> Autorización
+// El orden aquÃ­ es CRÃTICO: CORS -> AutenticaciÃ³n -> AutorizaciÃ³n
 app.UseCors("FrontendDev");
 
-app.UseAuthentication(); // ¿Quién es el usuario?
-app.UseAuthorization();  // ¿A qué tiene permiso?
+app.UseAuthentication(); // Â¿QuiÃ©n es el usuario?
+app.UseAuthorization();  // Â¿A quÃ© tiene permiso?
 
 app.MapControllers();
 
-// --- Inicialización de Datos (Seeding) ---
-// Ejecuta la creación de usuarios base al iniciar la aplicación si no existen
+// --- InicializaciÃ³n de Datos (Seeding) ---
+// Ejecuta la creaciÃ³n de usuarios base al iniciar la aplicaciÃ³n si no existen
 using (var scope = app.Services.CreateScope())
 {
-    var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    DbInitializer.SeedAdmin(context);
-    DbInitializer.SeedCajero(context);
+    var initializer = scope.ServiceProvider.GetRequiredService<DbInitializer>();
+    await initializer.SeedAsync();
 }
 
 app.Run();

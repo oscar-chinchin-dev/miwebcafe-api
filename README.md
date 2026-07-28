@@ -55,6 +55,36 @@ Roles:
 
 ---
 
+## Local secrets
+
+The API uses .NET Secret Manager in the `Development` environment. Secrets are stored in the developer profile and are not committed to the repository. The project already defines its `UserSecretsId`, so no initialization command is required.
+
+Before starting the API for the first time, open PowerShell in `MiWebCafe.API` and configure all required values:
+
+```powershell
+$jwtKey = [Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+
+dotnet user-secrets set "Jwt:Key" $jwtKey
+
+dotnet user-secrets set "InitialUsers:Admin:Nombre" "<admin-name>"
+dotnet user-secrets set "InitialUsers:Admin:Email" "<admin-email>"
+dotnet user-secrets set "InitialUsers:Admin:Password" "<admin-password>"
+
+dotnet user-secrets set "InitialUsers:Cajero:Nombre" "<cashier-name>"
+dotnet user-secrets set "InitialUsers:Cajero:Email" "<cashier-email>"
+dotnet user-secrets set "InitialUsers:Cajero:Password" "<cashier-password>"
+```
+
+Replace every placeholder with local values that are not committed or shared through the repository.
+
+- `Jwt:Key` signs and validates JWTs. It must contain at least 32 characters; the command generates a cryptographically random 32-byte value.
+- `InitialUsers:Admin:*` defines the administrator created only when its email does not already exist.
+- `InitialUsers:Cajero:*` defines the cashier created only when its email does not already exist.
+
+The application validates these values at startup. Do not add them to `appsettings.json`, `appsettings.Development.json`, or any tracked file.
+
+---
+
 ## Database
 
 - SQL Server

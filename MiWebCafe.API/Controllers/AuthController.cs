@@ -1,8 +1,10 @@
-﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using miwebcafe.API.Data;
+using MiWebCafe.API.Configuration;
 using MiWebCafe.API.DTOs.Auth;
 using MiWebCafe.API.Entities;
 using System.IdentityModel.Tokens.Jwt;
@@ -16,17 +18,18 @@ namespace MiWebCafe.API.Controllers
     /// Provee endpoints para el inicio de sesión y generación de tokens JWT.
     /// </summary>
     
+    
     [ApiController]
     [Route("api/auth")]
     public class AuthController : ControllerBase
     {
         private readonly AppDbContext _context;
-        private readonly IConfiguration _config;
+        private readonly JwtOptions _jwtOptions;
 
-        public AuthController(AppDbContext context, IConfiguration config)
+        public AuthController(AppDbContext context, IOptions<JwtOptions> jwtOptions)
         {
             _context = context;
-            _config = config;
+            _jwtOptions = jwtOptions.Value;
         }
 
         /// <summary>
@@ -90,7 +93,7 @@ namespace MiWebCafe.API.Controllers
             // Obtenemos la llave secreta desde la configuración (User-Secrets o Variables de entorno en producción).
 
             var key = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(_config["Jwt:Key"]!)
+                Encoding.UTF8.GetBytes(_jwtOptions.Key)
             );
 
             // Definimos el algoritmo de firma (HMAC SHA256 es el estándar para JWT).
@@ -100,11 +103,11 @@ namespace MiWebCafe.API.Controllers
             // Construcción del objeto del token con tiempos de expiración y emisores definidos.
 
             var token = new JwtSecurityToken(
-                issuer: _config["Jwt:Issuer"],
-                audience: _config["Jwt:Audience"],
+                issuer: _jwtOptions.Issuer,
+                audience: _jwtOptions.Audience,
                 claims: claims,
                 expires: DateTime.UtcNow.AddMinutes(
-                    int.Parse(_config["Jwt:ExpireMinutes"]!)
+                    _jwtOptions.ExpireMinutes
                 ),
                 signingCredentials: creds
             );
