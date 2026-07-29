@@ -1,9 +1,10 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using miwebcafe.API.Data;
 using MiWebCafe.API.DTOs;
 using MiWebCafe.API.Entities;
+using MiWebCafe.API.Services;
 using System.Security.Claims;
 
 namespace MiWebCafe.API.Controllers
@@ -66,7 +67,7 @@ namespace MiWebCafe.API.Controllers
                     UsuarioId = userId,
                     Total = 0,
                     CierreCajaId = cajaAbierta.CierreCajaId,
-                    Estado = "ABIERTA"
+                    Estado = VentaEstados.Abierta
                 };
 
                 _context.Ventas.Add(venta);
@@ -237,8 +238,8 @@ namespace MiWebCafe.API.Controllers
         [Authorize(Roles = "Admin")]
         [HttpGet("reporte-rango")]
         public async Task<IActionResult> ReporteRango(
-    [FromQuery] DateTime desde,
-    [FromQuery] DateTime hasta)
+            [FromQuery] DateTime desde,
+            [FromQuery] DateTime hasta)
         {
             if (desde > hasta)
                 return BadRequest("La fecha 'desde' no puede ser mayor que 'hasta'");
@@ -282,10 +283,13 @@ namespace MiWebCafe.API.Controllers
             if (venta == null)
                 return NotFound("Venta no existe");
 
-            if (venta.Anulada)
-                return BadRequest("La venta ya está anulada");
+            var estadoActual = VentaStateMachine.ObtenerEstadoActual(venta);
+            var validacion = VentaStateMachine.ValidarTransicion(estadoActual, VentaEstados.Anulada);
+            if (!validacion.EsValida)
+                return BadRequest(validacion.MensajeError);
 
             venta.Anulada = true;
+            venta.Estado = VentaEstados.Anulada;
             venta.FechaAnulacion = DateTime.UtcNow;
             venta.Total = 0; // Se resetea el total para no afectar reportes financieros
 
@@ -308,6 +312,10 @@ namespace MiWebCafe.API.Controllers
 
             if (venta == null)
                 return NotFound("Venta no existe");
+
+            var validacionMod = VentaStateMachine.ValidarModificacion(venta);
+            if (!validacionMod.EsValida)
+                return BadRequest(validacionMod.MensajeError);
 
             var producto = await _context.Productos.FindAsync(dto.ProductoId);
 
@@ -353,7 +361,12 @@ namespace MiWebCafe.API.Controllers
             if (venta == null)
                 return NotFound("Venta no encontrada");
 
-            venta.Estado = "CONFIRMADA";
+            var estadoActual = VentaStateMachine.ObtenerEstadoActual(venta);
+            var validacion = VentaStateMachine.ValidarTransicion(estadoActual, VentaEstados.Confirmada);
+            if (!validacion.EsValida)
+                return BadRequest(validacion.MensajeError);
+
+            venta.Estado = VentaEstados.Confirmada;
             venta.Fecha = DateTime.Now;
 
             await _context.SaveChangesAsync();
