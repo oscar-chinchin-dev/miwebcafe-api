@@ -86,7 +86,7 @@ namespace MiWebCafe.API.Controllers
                     // Regla de Negocio: No permitir ventas que superen el stock disponible
 
                     if (producto.Stock < item.Cantidad)
-                        return BadRequest($"Stock insuficiente para {producto.Nombre}");
+                        return BadRequest($"Stock insuficiente para el producto '{producto.Nombre}'. Stock disponible: {producto.Stock}, cantidad solicitada: {item.Cantidad}.");
 
                     // Actualización de inventario en tiempo real
 
@@ -111,6 +111,13 @@ namespace MiWebCafe.API.Controllers
                 await transaction.CommitAsync(); // Confirmación de cambios en la base de datos
 
                 return Ok(new { venta.VentaId, venta.Total });
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // El stock de uno o más productos fue modificado por otra transacción
+                // entre la lectura y la escritura. Se revierte toda la operación.
+                await transaction.RollbackAsync();
+                return Conflict("El inventario fue modificado por otra transacción. Por favor, inténtelo nuevamente.");
             }
             catch
             {
@@ -323,7 +330,10 @@ namespace MiWebCafe.API.Controllers
                 return NotFound("Producto no existe");
 
             if (producto.Stock < dto.Cantidad)
-                return BadRequest("Stock insuficiente");
+                return BadRequest($"Stock insuficiente para el producto '{producto.Nombre}'. Stock disponible: {producto.Stock}, cantidad solicitada: {dto.Cantidad}.");
+
+            // Actualización de inventario en tiempo real
+            producto.Stock -= dto.Cantidad;
 
             // Lógica para acumular cantidad si el producto ya está en la lista de detalles
 
@@ -333,6 +343,7 @@ namespace MiWebCafe.API.Controllers
             if (detalleExistente != null)
             {
                 detalleExistente.Cantidad += dto.Cantidad;
+                detalleExistente.Subtotal = detalleExistente.PrecioUnitario * detalleExistente.Cantidad;
             }
             else
             {
@@ -340,12 +351,24 @@ namespace MiWebCafe.API.Controllers
                 {
                     ProductoId = dto.ProductoId,
                     Cantidad = dto.Cantidad,
-                    PrecioUnitario = producto.Precio
+                    PrecioUnitario = producto.Precio,
+                    Subtotal = producto.Precio * dto.Cantidad
                 });
             }
 
-            await _context.SaveChangesAsync();
-            return Ok();
+            venta.Total += producto.Precio * dto.Cantidad;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+                return Ok();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // El stock del producto fue modificado por otra transacción
+                // entre la lectura y la escritura. Se cancela la operación.
+                return Conflict("El inventario fue modificado por otra transacción. Por favor, inténtelo nuevamente.");
+            }
         }
 
         /// <summary>
