@@ -67,7 +67,7 @@ namespace MiWebCafe.API.Controllers
                     UsuarioId = userId,
                     Total = 0,
                     CierreCajaId = cajaAbierta.CierreCajaId,
-                    Estado = VentaEstados.Abierta
+                    Estado = VentaEstados.Confirmada
                 };
 
                 _context.Ventas.Add(venta);
