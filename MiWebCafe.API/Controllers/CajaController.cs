@@ -1,9 +1,10 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using miwebcafe.API.Data;
 using MiWebCafe.API.DTOs;
 using MiWebCafe.API.Entities;
+using MiWebCafe.API.Services;
 using System.Security.Claims;
 
 namespace MiWebCafe.API.Controllers
@@ -99,19 +100,28 @@ namespace MiWebCafe.API.Controllers
             if (caja.Estado != "ABIERTA")
                 return BadRequest("La caja ya está cerrada.");
 
-            // Recopila todas las ventas vinculadas a este cierre de caja que no hayan sido anuladas
+            // Solo se consideran ventas CONFIRMADAS (cobradas) y no anuladas.
+            // Las ventas en estado ABIERTA son borradores no cobrados y no deben
+            // formar parte del arqueo financiero del turno.
             var ventas = await _context.Ventas
-                .Where(v => v.CierreCajaId == cierreCajaId && !v.Anulada)
+                .Where(v => v.CierreCajaId == cierreCajaId
+                         && !v.Anulada
+                         && v.Estado == VentaEstados.Confirmada)
                 .ToListAsync();
 
-            // Cálculo de arqueo de caja
-            var esperado = caja.MontoInicial + caja.TotalVentas;
-            var declarado = caja.MontoFinalDeclarado ?? 0;
+            // El total real se calcula PRIMERO desde la base de datos para usarlo
+            // en el arqueo. Esto corrige el bug previo donde 'esperado' usaba
+            // caja.TotalVentas (siempre 0) antes de actualizarlo.
+            var totalVentasConfirmadas = ventas.Sum(v => v.Total);
+
+            // Arqueo: efectivo esperado = monto inicial del turno + ventas cobradas
+            var esperado = caja.MontoInicial + totalVentasConfirmadas;
+            var declarado = dto.MontoFinalDeclarado ?? 0;
             var diferencia = declarado - esperado;
 
-            // Actualización de los totales y estado final de la caja
+            // Persistencia del cierre
             caja.CantidadVentas = ventas.Count;
-            caja.TotalVentas = ventas.Sum(v => v.Total);
+            caja.TotalVentas = totalVentasConfirmadas;
             caja.MontoFinalDeclarado = dto.MontoFinalDeclarado;
             caja.FechaCierre = DateTime.UtcNow;
             caja.Estado = "CERRADA";
@@ -150,9 +160,11 @@ namespace MiWebCafe.API.Controllers
 
             if (caja == null) return NotFound("Cierre no encontrado");
 
-            // Obtiene ventas confirmadas para el resumen financiero
+            // Coherente con CerrarCaja: solo ventas CONFIRMADAS (cobradas) y no anuladas.
             var ventas = await _context.Ventas
-                .Where(v => v.CierreCajaId == cierreCajaId && !v.Anulada)
+                .Where(v => v.CierreCajaId == cierreCajaId
+                         && !v.Anulada
+                         && v.Estado == VentaEstados.Confirmada)
                 .ToListAsync();
 
             var totalVentas = ventas.Sum(v => v.Total);
