@@ -116,8 +116,7 @@ namespace MiWebCafe.API.Controllers
 
             // Arqueo: efectivo esperado = monto inicial del turno + ventas cobradas
             var esperado = caja.MontoInicial + totalVentasConfirmadas;
-            var declarado = dto.MontoFinalDeclarado ?? 0;
-            var diferencia = declarado - esperado;
+            var diferencia = dto.MontoFinalDeclarado - esperado;
 
             // Persistencia del cierre
             caja.CantidadVentas = ventas.Count;
@@ -135,9 +134,9 @@ namespace MiWebCafe.API.Controllers
                 caja.FechaApertura,
                 caja.FechaCierre,
                 caja.MontoInicial,
-                caja.MontoFinalDeclarado,
+                TotalVentas = caja.TotalVentas,
                 caja.CantidadVentas,
-                caja.TotalVentas,
+                caja.MontoFinalDeclarado,
                 Esperado = esperado,
                 Diferencia = diferencia
             });
